@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ./agent/approve-run "<команда>" — выполнить ОДОБРЕННОЕ владельцем действие (ключ approved).
+# Зовёт только heal.sh после ✅ в Telegram; ИИ-агенту этот скрипт не разрешён.
+# В Actions ключ приходит в $GUARDIAN_APPROVED_KEY_PEM и пишется на диск только здесь, на время вызова.
+set -uo pipefail
+dir="$(cd "$(dirname "$0")" && pwd)"
+key="$HOME/.ssh/poh_guardian_approved"; tmp=""
+if [ -n "${GUARDIAN_APPROVED_KEY_PEM:-}" ]; then
+  tmp="$(mktemp)"; chmod 600 "$tmp"; printf '%s\n' "$GUARDIAN_APPROVED_KEY_PEM" > "$tmp"; key="$tmp"
+fi
+trap '[ -n "$tmp" ] && rm -f "$tmp"' EXIT
+ssh -i "$key" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=25 \
+    -o UserKnownHostsFile="$dir/known_hosts" -o StrictHostKeyChecking=yes \
+    -o ControlMaster=no -o ControlPath=none aleks@135.106.218.5 "$1"

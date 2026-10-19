@@ -1,0 +1,41 @@
+name: probe
+# Запасной внешний пинг из облака GitHub — на случай, когда Mac спит.
+# Раз в 3 часа (~240 мин/мес из 2000 бесплатных), по понедельникам — «хранитель на посту» в Telegram.
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+    - cron: "0 2 * * 1"   # пн 09:00 Вьетнам / 05:00 МСК
+  workflow_dispatch:
+
+permissions: {contents: read}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+      reason: ${{ steps.p.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        run: |
+          set +e
+          python3 probe/probe.py --json --gap 30 > probe.json; rc=$?
+          cat probe.json
+          echo "ok=$([ $rc -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "reason=пинг GitHub: $(python3 -c 'import json; print("; ".join(r["name"] for r in json.load(open("probe.json"))["failed"]))')" >> "$GITHUB_OUTPUT"
+      - name: хранитель на посту (раз в неделю)
+        if: steps.p.outputs.ok == 'true' && github.event.schedule == '0 2 * * 1'
+        env:
+          TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
+        run: python3 agent/telegram.py send "🫡 Хранитель на посту: снаружи всё отвечает. Учения — Actions → heal → scenario=canary."
+
+  heal:
+    needs: probe
+    if: needs.probe.outputs.ok == 'false'
+    uses: ./.github/workflows/heal.yml
+    with:
+      reason: ${{ needs.probe.outputs.reason }}
+    secrets: inherit

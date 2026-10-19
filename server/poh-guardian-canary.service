@@ -1,0 +1,10 @@
+[Unit]
+Description=poh-guardian: канарейка для учений хранителя (127.0.0.1:8649/healthz)
+
+[Service]
+ExecStart=/usr/bin/python3 -m http.server 8649 --bind 127.0.0.1 --directory %h/.local/share/poh-guardian/canary
+Restart=no
+MemoryMax=64M
+
+[Install]
+WantedBy=default.target

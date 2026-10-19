@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# ./agent/g <команда guardian-shell>  — единственный инструмент ИИ-агента.
+# Ключ heal: на сервере forced command пускает только белый список (server/guardian-shell).
+# После 2 провалов SSH подряд — дальше не стучимся: fail2ban (aggressive) банит IP на 24 ч.
+set -uo pipefail
+dir="$(cd "$(dirname "$0")" && pwd)"
+key="$HOME/.ssh/poh_guardian_heal"   # без переопределения из окружения
+fails="${GUARDIAN_STATE:-$dir/../.state}/ssh_failures"
+mkdir -p "$(dirname "$fails")"
+n=$(cat "$fails" 2>/dev/null || echo 0)
+if [ "$n" -ge 2 ]; then
+  echo "SSH недоступен: уже $n провала подряд, новые попытки заблокированы (fail2ban банит после 3 за 10 мин)."
+  exit 255
+fi
+ssh -i "$key" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=25 \
+    -o ServerAliveInterval=10 -o ServerAliveCountMax=3 \
+    -o UserKnownHostsFile="$dir/known_hosts" -o StrictHostKeyChecking=yes \
+    -o ControlMaster=no -o ControlPath=none \
+    aleks@135.106.218.5 "$*"
+rc=$?
+if [ $rc -eq 255 ]; then echo $((n + 1)) > "$fails"; echo "[ssh: ошибка соединения, провал $((n + 1)) из 2]"; else echo 0 > "$fails"; fi
+exit $rc

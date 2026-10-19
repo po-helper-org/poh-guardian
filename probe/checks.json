@@ -1,0 +1,12 @@
+{
+  "_comment": "Что считается «система доступна». Только HTTPS: порт SSH пингом не трогаем — fail2ban в режиме aggressive банит и пустые подключения.",
+  "checks": [
+    {"name": "Hermes dashboard", "url": "https://harness.aleksishmanov.ru/", "expect": [302]},
+    {"name": "Matrix", "url": "https://harness.aleksishmanov.ru/matrix/_matrix/client/versions", "expect": [200]},
+    {"name": "Инбокс", "url": "https://browser.harness.aleksishmanov.ru/inbox/", "expect": [200]},
+    {"name": "Корп-браузер (виджет)", "url": "https://browser.harness.aleksishmanov.ru/widget/", "expect": [200]},
+    {"name": "PO-Harness", "url": "https://browser.harness.aleksishmanov.ru/harness/", "expect": [200]},
+    {"name": "Созвоны healthz", "url": "https://browser.harness.aleksishmanov.ru/meet/healthz", "expect": [200]},
+    {"name": "Гейт входа", "url": "https://harness.aleksishmanov.ru/pi/", "expect": [302]}
+  ]
+}
