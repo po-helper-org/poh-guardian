@@ -27,7 +27,7 @@ echo $$ > "$lock/pid"; trap 'rm -rf "$lock"' EXIT
 cfg="$HOME/.config/poh-guardian/guardian.env"
 if [ -z "${ZAI_API_KEY:-}" ] && [ -f "$cfg" ]; then set -a; . "$cfg"; set +a; fi
 tg() { python3 agent/telegram.py "$@"; }
-probe() { ${GUARDIAN_PROBE:-python3 probe/probe.py} "$@"; }   # подмена — только для тестов
+probe() { if [ -n "${GUARDIAN_PROBE:-}" ]; then "$GUARDIAN_PROBE" "$@"; else python3 probe/probe.py "$@"; fi; }   # подмена — только для тестов
 where="${GITHUB_RUN_ID:+GitHub Actions, прогон $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID}"
 [ "$(uname)" = Darwin ] && where="${where:-Mac владельца}"
 where="${where:-$(uname -n)}"
@@ -79,12 +79,14 @@ if [ -z "${ZAI_API_KEY:-}" ]; then
   echo '{"result": "агент не запущен: нет ключа Z.AI (ZAI_API_KEY) — запустите wizard/setup-owner.sh"}' > "$GUARDIAN_STATE/run.json"
   : > "$GUARDIAN_STATE/run.err"; claude_rc=1
 else
-env -u TELEGRAM_BOT_TOKEN -u GUARDIAN_APPROVED_KEY_PEM -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY \
+  # env -i: агенту — только перечисленное; ничего из окружения владельца/раннера (OAuth, Bedrock, заголовки…)
+  env -i PATH="$PATH" HOME="$HOME" LANG="${LANG:-C.UTF-8}" TMPDIR="${TMPDIR:-/tmp}" USER="${USER:-}" \
+    GUARDIAN_STATE="$GUARDIAN_STATE" \
     CLAUDE_CONFIG_DIR="$glm_home" ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
     ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" ANTHROPIC_MODEL="${GUARDIAN_MODEL:-glm-5.3}" \
     ANTHROPIC_DEFAULT_OPUS_MODEL="${GUARDIAN_MODEL:-glm-5.3}" ANTHROPIC_DEFAULT_SONNET_MODEL="${GUARDIAN_MODEL:-glm-5.3}" \
     ANTHROPIC_DEFAULT_HAIKU_MODEL="glm-5.3-flash" API_TIMEOUT_MS=600000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-    ZAI_API_KEY= \
+    ${FAKE_DUMP:+FAKE_DUMP="$FAKE_DUMP"} \
   "$claude_bin" -p "$prompt" \
   --strict-mcp-config --setting-sources "" --permission-mode default \
   --allowedTools "Bash(./agent/g:*)" \

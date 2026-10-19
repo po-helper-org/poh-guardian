@@ -239,7 +239,7 @@ say "Можно взять существующий ключ Coding Plan или 
 open_url "https://z.ai/manage-apikey/apikey-list"
 step "API Keys → Create a new API key (имя: guardian) → скопируйте ключ."
 ask_secret ZAI_API_KEY "Вставьте ключ Z.AI (ввод скрыт):"
-hdr="$(mktemp)"; chmod 600 "$hdr"
+hdr="$(mktemp)"; chmod 600 "$hdr"; trap 'rm -f "$hdr"' EXIT INT TERM
 printf 'Authorization: Bearer %s\nx-api-key: %s\n' "$ZAI_API_KEY" "$ZAI_API_KEY" > "$hdr"   # ключ не в списке процессов
 code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' https://api.z.ai/api/anthropic/v1/messages \
   -H @"$hdr" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \

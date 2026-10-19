@@ -13,7 +13,7 @@ import json, os, sys
 json.dump({"env": {k: os.environ.get(k) for k in (
     "CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL",
     "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "ZAI_API_KEY",
-    "GUARDIAN_APPROVED_KEY_PEM")}, "argv": sys.argv[1:]}, open(os.environ["FAKE_DUMP"], "w"))
+    "GUARDIAN_APPROVED_KEY_PEM", "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_USE_BEDROCK")}, "argv": sys.argv[1:]}, open(os.environ["FAKE_DUMP"], "w"))
 print(json.dumps({"result": "Что было: учения. Сейчас: ок."}))
 """
 FAKE_PROBE = """#!/usr/bin/env bash
@@ -61,6 +61,12 @@ class HealGlmTest(unittest.TestCase):
         r, seen, _ = self.run_heal({})
         self.assertIsNone(seen, "без ключа Z.AI раннер не запускается (и не уходит в подписку Claude)")
         self.assertIn("нет ключа Z.AI", r.stdout)
+        self.assertEqual(r.returncode, 0, "учения: доклад отправлен, скрипт не падает")
+
+    def test_unknown_env_does_not_reach_agent(self):
+        r, seen, _ = self.run_heal({"ZAI_API_KEY": "k", "ANTHROPIC_CUSTOM_HEADERS": "x", "CLAUDE_CODE_USE_BEDROCK": "1"})
+        self.assertEqual(sorted(k for k, v in seen["env"].items() if v), sorted(
+            ["CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"]))
 
     def test_key_from_mac_config_file(self):
         tmp = tempfile.mkdtemp()
