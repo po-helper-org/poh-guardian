@@ -4,6 +4,9 @@
 # В Actions ключ приходит в $GUARDIAN_APPROVED_KEY_PEM и пишется на диск только здесь, на время вызова.
 set -uo pipefail
 dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=sshguard.sh
+. "$dir/sshguard.sh"
+guard_check || exit 255
 key="$HOME/.ssh/poh_guardian_approved"; tmp=""
 if [ -n "${GUARDIAN_APPROVED_KEY_PEM:-}" ]; then
   tmp="$(mktemp)"; chmod 600 "$tmp"; printf '%s\n' "$GUARDIAN_APPROVED_KEY_PEM" > "$tmp"; key="$tmp"
@@ -12,3 +15,6 @@ trap '[ -n "$tmp" ] && rm -f "$tmp"' EXIT
 ssh -i "$key" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=25 \
     -o UserKnownHostsFile="$dir/known_hosts" -o StrictHostKeyChecking=yes \
     -o ControlMaster=no -o ControlPath=none aleks@135.106.218.5 "$1"
+rc=$?
+guard_record $rc
+exit $rc

@@ -85,6 +85,8 @@ class Bot:
                     continue
                 if cq.get("message", {}).get("message_id") != mid:
                     continue
+                if str(cq.get("from", {}).get("id")) != self.chat_id:  # нажать может только владелец (личка)
+                    continue
                 answer = "yes" if cq.get("data") == "yes" else "no"
                 self.call("answerCallbackQuery", callback_query_id=cq["id"],
                           text="Выполняю" if answer == "yes" else "Не выполняю")

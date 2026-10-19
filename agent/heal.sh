@@ -9,7 +9,14 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export GUARDIAN_STATE="${GUARDIAN_STATE:-$PWD/.state}"
-mkdir -p "$GUARDIAN_STATE"; rm -f "$GUARDIAN_STATE/ssh_failures"
+mkdir -p "$GUARDIAN_STATE"
+# один прогон за раз на машину (на Mac сторож может разбудить снова, пока ждём кнопку)
+lock="$HOME/.local/state/poh-guardian/heal.lock"; mkdir -p "$(dirname "$lock")"
+if ! mkdir "$lock" 2>/dev/null; then
+  if kill -0 "$(cat "$lock/pid" 2>/dev/null)" 2>/dev/null; then echo "хранитель уже работает — выхожу"; exit 0; fi
+  rm -rf "$lock"; mkdir "$lock"
+fi
+echo $$ > "$lock/pid"; trap 'rm -rf "$lock"' EXIT
 tg() { python3 agent/telegram.py "$@"; }
 where="${GITHUB_RUN_ID:+GitHub Actions, прогон $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID}"
 [ "$(uname)" = Darwin ] && where="${where:-Mac владельца}"
@@ -55,9 +62,10 @@ prompt="$(cat agent/prompt.md)
 $task"
 
 claude_bin="${CLAUDE_BIN:-claude}"
-# агенту — ни токена Telegram, ни ключа approved: только ./agent/g с ключом heal
+# агенту — ни токена Telegram, ни ключа approved: только ./agent/g с ключом heal;
+# без MCP (оборванные SSH-MCP = бан fail2ban) и без пользовательских CLAUDE.md/хуков (--setting-sources "")
 env -u TELEGRAM_BOT_TOKEN -u GUARDIAN_APPROVED_KEY_PEM "$claude_bin" -p "$prompt" \
-  --strict-mcp-config \
+  --strict-mcp-config --setting-sources "" --permission-mode default \
   --allowedTools "Bash(./agent/g:*)" \
   --disallowedTools "Read,Write,Edit,MultiEdit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,Agent,TodoWrite" \
   --max-turns 40 --output-format json > "$GUARDIAN_STATE/run.json" 2> "$GUARDIAN_STATE/run.err"
@@ -74,20 +82,7 @@ except Exception as e:
 
 # предложения — вырезать из доклада в файл
 printf '%s' "$report" > "$GUARDIAN_STATE/report_raw.txt"
-python3 - "$GUARDIAN_STATE" <<'PY'
-import json, re, sys
-text = open(sys.argv[1] + "/report_raw.txt").read()
-m = re.search(r"```proposals\s*(\[.*?\])\s*```", text, re.S)
-props = []
-if m:
-    try:
-        props = [p for p in json.loads(m.group(1)) if p.get("command")]
-    except ValueError:
-        pass
-    text = text[:m.start()].rstrip()
-open(sys.argv[1] + "/report.txt", "w").write(text)
-json.dump(props, open(sys.argv[1] + "/proposals.json", "w"), ensure_ascii=False)
-PY
+n=$(python3 agent/proposals.py split "$GUARDIAN_STATE" || echo 0)
 
 python3 probe/probe.py --json --gap 0 > "$GUARDIAN_STATE/probe_after.json"; after_rc=$?
 mins=$(( ($(date +%s) - started + 59) / 60 ))
@@ -99,13 +94,12 @@ $(cat "$GUARDIAN_STATE/report.txt")" >/dev/null
 echo "=== доклад ==="; cat "$GUARDIAN_STATE/report.txt"; echo
 
 # действия вне белого списка — только по ✅ владельца
-n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$GUARDIAN_STATE/proposals.json")
 for ((i = 0; i < n; i++)); do
-  q=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))[int(sys.argv[2])]; print("🛠 Предложение %d: %s\nКоманда: %s\nЗачем: %s\nРиск: %s" % (int(sys.argv[2])+1, p.get("title",""), p["command"], p.get("why",""), p.get("risk","")))' "$GUARDIAN_STATE/proposals.json" "$i")
+  q=$(python3 agent/proposals.py show "$GUARDIAN_STATE/proposals.json" "$i")
   echo "$q"
   ans=$(tg ask "$q" --timeout "${GUARDIAN_ASK_TIMEOUT:-1800}")
   if [ "$ans" = yes ]; then
-    cmd=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[int(sys.argv[2])]["command"])' "$GUARDIAN_STATE/proposals.json" "$i")
+    cmd=$(python3 agent/proposals.py cmd "$GUARDIAN_STATE/proposals.json" "$i")
     out=$(./agent/approve-run "$cmd" 2>&1 | tail -c 1500)
     python3 probe/probe.py --gap 10 >/dev/null && st="снаружи всё отвечает" || st="снаружи ещё есть сбои"
     tg send "Выполнено: $cmd

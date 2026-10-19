@@ -35,8 +35,13 @@ class HealModeTest(unittest.TestCase):
 
     def test_unban_validates_ip(self):
         for bad in ("1.2.3", "1.2.3.4; id", "300.1.1.1", "--all"):
-            with self.assertRaises(gs.Refused, msg=bad):
+            with self.assertRaises(gs.Refused, msg=bad) as ctx:
                 gs.run("heal", "unban " + bad)
+            self.assertIn("unban <IPv4>", str(ctx.exception))
+
+    def test_unbalanced_quote_is_refusal_not_traceback(self):
+        with self.assertRaises(gs.Refused):
+            gs.run("heal", "logs 'poh-widget-inbox")
 
     def test_empty_mode_refused(self):
         with self.assertRaises(gs.Refused):

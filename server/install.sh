@@ -26,10 +26,23 @@ check() {
   return $bad
 }
 
-remove() {
+# Переписать authorized_keys атомарно: без строк, где есть $1, плюс строка $2 (может быть пустой).
+# Любая ошибка чтения или «потеря» чужих ключей — отказ, файл не трогаем.
+rewrite_ak() {
+  local drop="$1" add="${2:-}" tmp before kept rc
+  [ -f "$ak" ] || { echo "нет $ak — не трогаю"; return 1; }
+  tmp="$(mktemp "$ak.guardian.XXXXXX")"
+  rc=0; grep -vF -- "$drop" "$ak" > "$tmp" || rc=$?
+  [ $rc -le 1 ] || { rm -f "$tmp"; echo "ошибка чтения $ak (grep $rc) — не трогаю"; return 1; }
+  before=$(grep -cvF -- "$drop" "$ak" || true); kept=$(wc -l < "$tmp" | tr -d ' ')
+  [ "$kept" -eq "$before" ] || { rm -f "$tmp"; echo "строк $kept ≠ $before — не трогаю"; return 1; }
+  [ -n "$add" ] && printf '%s\n' "$add" >> "$tmp"
   cp -p "$ak" "$ak.bak-guardian-$(date +%Y%m%d%H%M%S)"
-  grep -vF 'guardian-shell ' "$ak" > "$ak.tmp" && cat "$ak.tmp" > "$ak" && rm -f "$ak.tmp"
-  echo "ключи хранителя сняты (бэкап рядом)"
+  chmod 600 "$tmp" && mv -f "$tmp" "$ak"
+}
+
+remove() {
+  rewrite_ak 'guardian-shell ' && echo "ключи хранителя сняты (бэкап рядом)"
 }
 
 case "${1:-}" in
@@ -45,14 +58,11 @@ install -m 644 "$here/poh-guardian-canary.service" "$unitdir/poh-guardian-canary
 systemctl --user daemon-reload
 systemctl --user enable --now poh-guardian-canary >/dev/null 2>&1 || true
 
-changed=0
 for m in heal approved; do
   pub="$here/keys/$m.pub"
   [ -f "$pub" ] || { echo "нет $pub — пропускаю ключ $m"; continue; }
   line="$(key_line "$m" "$pub")"
   grep -qxF "$line" "$ak" && continue
-  [ $changed = 1 ] || cp -p "$ak" "$ak.bak-guardian-$(date +%Y%m%d%H%M%S)"
-  grep -vF "guardian-shell $m\" " "$ak" > "$ak.tmp" || true
-  echo "$line" >> "$ak.tmp"; cat "$ak.tmp" > "$ak"; rm -f "$ak.tmp"; changed=1
+  rewrite_ak "guardian-shell $m\" " "$line"
 done
 check

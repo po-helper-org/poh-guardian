@@ -293,8 +293,11 @@ def v_kill(args):
         raise Refused("kill %d: %s" % (pid, why))
     os.kill(pid, 15)
     time.sleep(5)
-    if os.path.exists("/proc/%d" % pid):
-        os.kill(pid, 9)
+    try:  # pid мог переиспользоваться за 5 с — добиваем, только если это тот же процесс
+        if _proc(pid)[0] == cmdline:
+            os.kill(pid, 9)
+    except OSError:
+        pass
     log_change(action="kill", pid=pid, cmd=cmdline[:160], by="guardian")
     return "снят %d (%s, %.0f мин)" % (pid, cmdline[:120], age / 60)
 
@@ -303,10 +306,14 @@ def v_chrome_restart(args):
     name = {"corp": "corp-chrome", "mtslink": "mtslink-chrome"}.get(args[0] if args else "")
     if not name:
         raise Refused("chrome-restart corp|mtslink")
+    _restart_budget("chrome:" + name, time.time())
+    # CDP есть только у corp-chrome (9222); у mtslink-chrome CDP нет — смотрим, что chrome снова запущен
+    after = ("curl -s -m 5 -o /dev/null -w 'CDP %{http_code}' http://127.0.0.1:9222/json/version"
+             if name == "corp-chrome" else
+             "sg docker -c 'docker exec %s pgrep -c -x chrome' | sed 's/^/процессов chrome: /'" % name)
     out = sh("sg docker -c 'docker exec %s pkill -TERM -x chrome'; sleep 10; "
-             "sg docker -c 'docker exec %s pkill -KILL -x chrome'; sleep 8; "
-             "curl -s -m 5 -o /dev/null -w 'CDP %%{http_code}' http://127.0.0.1:9222/json/version"
-             % (name, name), timeout=60)
+             "sg docker -c 'docker exec %s pkill -KILL -x chrome'; sleep 8; %s"
+             % (name, name, after), timeout=60)
     log_change(action="chrome-restart", container=name, by="guardian")
     return out
 
@@ -330,7 +337,10 @@ def run(mode, command):
     if mode == "heal":
         if not command or command in ("help", "-h", "--help"):
             return help_text()
-        args = shlex.split(command)
+        try:
+            args = shlex.split(command)
+        except ValueError as e:
+            raise Refused("не разобрал команду: %s" % e)
         verb = HEAL_VERBS.get(args[0])
         if verb is None:
             raise Refused("неизвестная команда %r. %s" % (args[0], help_text()))

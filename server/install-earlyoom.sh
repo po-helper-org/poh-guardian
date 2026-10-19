@@ -10,9 +10,12 @@ command -v earlyoom >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install
 [ -f /etc/default/earlyoom ] && cp -n /etc/default/earlyoom /etc/default/earlyoom.bak-guardian
 cat > /etc/default/earlyoom <<'EOF'
 # poh-guardian (ADR 0001): сначала тестовые браузеры и прогоны, никогда — ядро системы
-EARLYOOM_ARGS="-m 4 -s 10 -r 3600 --prefer '(^|/)(chrome|chromium|chrome-headless|chrome-headless-shell|Xvfb)$' --avoid '(^|/)(sshd|systemd|systemd-journal|nginx|python3|hermes|gotosocial|dockerd|containerd|Xvnc|xrdp|wg-quick|vpnagentd)$'"
+# Без внутренних кавычек: systemd подставляет $EARLYOOM_ARGS с разбиением по пробелам и кавычки не снимает.
+# Прод-браузеры (corp-chrome, mtslink-chrome, Созвоны) тоже называются chrome — их earlyoom не выделяет;
+# «в первую очередь» — только Xvfb (тестовые дисплеи) и chrome-headless-shell (поднимается по требованию).
+EARLYOOM_ARGS="-m 4 -s 10 -r 3600 --prefer (^|/)(Xvfb|chrome-headless-shell)$ --avoid (^|/)(sshd|systemd|systemd-journal|nginx|python3|hermes|gotosocial|dockerd|containerd|Xvnc|xrdp|vpnagentd|node)$"
 EOF
 systemctl enable earlyoom >/dev/null
 systemctl restart earlyoom
 sleep 2
-systemctl is-active earlyoom && journalctl -u earlyoom -n 5 --no-pager
+systemctl is-active earlyoom && journalctl -u earlyoom -n 8 --no-pager | grep -iE "prefer|avoid|mem total|sending"

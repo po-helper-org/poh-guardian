@@ -22,7 +22,7 @@ class FakeApi:
 
 def cq(update_id, chat, mid, data):
     return {"update_id": update_id, "callback_query": {
-        "id": "q%d" % update_id, "data": data,
+        "id": "q%d" % update_id, "data": data, "from": {"id": chat},
         "message": {"message_id": mid, "chat": {"id": chat}}}}
 
 
