@@ -5,6 +5,7 @@
 #   bash server/install.sh --remove   — снять ключи хранителя (оболочка и журнал остаются)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+stamp="$(date +%Y%m%d%H%M%S)"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 bin="$HOME/.local/bin"; ak="$HOME/.ssh/authorized_keys"
 canary="$HOME/.local/share/poh-guardian/canary"; unitdir="$HOME/.config/systemd/user"
@@ -37,7 +38,7 @@ rewrite_ak() {
   before=$(grep -cvF -- "$drop" "$ak" || true); kept=$(wc -l < "$tmp" | tr -d ' ')
   [ "$kept" -eq "$before" ] || { rm -f "$tmp"; echo "строк $kept ≠ $before — не трогаю"; return 1; }
   [ -n "$add" ] && printf '%s\n' "$add" >> "$tmp"
-  cp -p "$ak" "$ak.bak-guardian-$(date +%Y%m%d%H%M%S)"
+  [ -e "$ak.bak-guardian-$stamp" ] || cp -p "$ak" "$ak.bak-guardian-$stamp"   # один «до» на запуск
   chmod 600 "$tmp" && mv -f "$tmp" "$ak"
 }
 

@@ -13,8 +13,13 @@ mkdir -p "$GUARDIAN_STATE"
 # один прогон за раз на машину (на Mac сторож может разбудить снова, пока ждём кнопку)
 lock="$HOME/.local/state/poh-guardian/heal.lock"; mkdir -p "$(dirname "$lock")"
 if ! mkdir "$lock" 2>/dev/null; then
-  if kill -0 "$(cat "$lock/pid" 2>/dev/null)" 2>/dev/null; then echo "хранитель уже работает — выхожу"; exit 0; fi
-  rm -rf "$lock"; mkdir "$lock"
+  pid="$(cat "$lock/pid" 2>/dev/null)"
+  age=$(( $(date +%s) - $(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock") ))
+  # занят: живой pid или pid ещё не записан, а замку меньше 90 мин
+  if { [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; } || { [ -z "$pid" ] && [ "$age" -lt 5400 ]; }; then
+    echo "хранитель уже работает — выхожу"; exit 0
+  fi
+  rm -rf "$lock"; mkdir "$lock" || exit 0
 fi
 echo $$ > "$lock/pid"; trap 'rm -rf "$lock"' EXIT
 tg() { python3 agent/telegram.py "$@"; }
@@ -82,7 +87,7 @@ except Exception as e:
 
 # предложения — вырезать из доклада в файл
 printf '%s' "$report" > "$GUARDIAN_STATE/report_raw.txt"
-n=$(python3 agent/proposals.py split "$GUARDIAN_STATE" || echo 0)
+n=$(python3 agent/proposals.py split "$GUARDIAN_STATE") || { n=0; cp "$GUARDIAN_STATE/report_raw.txt" "$GUARDIAN_STATE/report.txt"; echo '[]' > "$GUARDIAN_STATE/proposals.json"; }
 
 python3 probe/probe.py --json --gap 0 > "$GUARDIAN_STATE/probe_after.json"; after_rc=$?
 mins=$(( ($(date +%s) - started + 59) / 60 ))
