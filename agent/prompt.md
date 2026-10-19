@@ -9,7 +9,8 @@
 - `logs <юнит> [N]` (юниты aleks), `syslog <юнит> [N]` (системные: nginx, ssh, davmail, server-watch)
 - `nginx-errors [N]`, `nginx-5xx` — 5xx по минутам и путям
 - `http <порт> [/путь]` — локальная проверка на 127.0.0.1; `ps [имя]`; `changes [N]`
-- действия: `restart <юнит>` (белый список, ≤3 в час на юнит), `kill <pid>` (только тестовые браузеры/прогоны
+- `bans` — баны fail2ban (sshd) и строки «Found»
+- действия: `unban <IPv4>` (снять бан fail2ban с IP владельца), `restart <юнит>` (белый список, ≤3 в час на юнит), `kill <pid>` (только тестовые браузеры/прогоны
   старше 10 мин), `chrome-restart corp|mtslink` (Chrome в контейнере, профиль сохраняется)
 Всё остальное оболочка отклонит — не пытайся обойти, а оформи предложением (ниже).
 Если `./agent/g` дважды подряд не смог подключиться — **остановись**: дальше fail2ban забанит, это бессмысленно.
@@ -32,6 +33,10 @@
 - Падает всё сразу, а nginx не active или `nginx-errors` про конфиг → nginx (системный, sudo) → предложение владельцу
 
 ## Известные причины (из журнала инцидентов)
+- **Бан IP владельца fail2ban** (2026-10-19 20:36, самая частая «недоступность»): у владельца все порты «refused»,
+  ping есть, а из облака всё отвечает. Режим aggressive: 3 события за 10 мин → бан на 24 ч, считаются и оборванные
+  входы `Connection closed by authenticating user aleks … [preauth]`, которые даёт короткий `claude -p`
+  с тремя SSH-MCP на Mac. Действие: `bans` → `unban <IP>` → в докладе — источник (время и тип строк [preauth]).
 - swap забит, load высокий → ищи забытые тестовые Chrome/Xvfb/прогоны (`ps chrome`, `ps Xvfb`, `ps node`) и снимай `kill`.
   Сервисы и прод-Chrome (corp-chrome, mtslink-chrome) не трогай `kill` — для них `chrome-restart`.
 - corp-chrome не отвечает по CDP → `chrome-restart corp` (есть и свой сторож corp-chrome-watchdog).

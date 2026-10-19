@@ -201,6 +201,25 @@ def v_ps(args):
     return sh(cmd + (" | grep -i -- %s | grep -v grep | head -30" % shlex.quote(pat) if pat else " | head -40"))
 
 
+IP_RE = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
+
+
+def v_bans(_):
+    log = sh("grep -E '\\[sshd\\] (Ban|Unban|Found)' /var/log/fail2ban.log | tail -25")
+    status = sh(["sudo", "-n", "/usr/bin/fail2ban-client", "status", "sshd"])
+    return "## fail2ban.log (sshd)\n%s\n\n## status sshd\n%s" % (log, status)
+
+
+def v_unban(args):
+    if not args or not IP_RE.match(args[0]) or any(int(o) > 255 for o in args[0].split(".")):
+        raise Refused("unban <IPv4>")
+    out = sh(["sudo", "-n", "/usr/bin/fail2ban-client", "set", "sshd", "unbanip", args[0]])
+    if "password is required" in out or "[код" in out:
+        raise Refused("нет sudo-правила для unban (шаг владельца: server/install-sudoers.sh): %s" % out[-200:])
+    log_change(action="unban", ip=args[0], by="guardian")
+    return "unban %s: %s" % (args[0], out)
+
+
 def v_changes(args):
     return tail_changes(_n(["x"] + args, 20, 200))
 
@@ -296,7 +315,8 @@ HEAL_VERBS = {
     "overview": v_overview, "units": v_units, "logs": v_logs, "syslog": v_syslog,
     "restarts": v_restarts, "nginx-errors": v_nginx_errors, "nginx-5xx": v_nginx_5xx,
     "http": v_http, "ps": v_ps, "changes": v_changes,
-    "restart": v_restart, "kill": v_kill, "chrome-restart": v_chrome_restart,
+    "bans": v_bans, "restart": v_restart, "kill": v_kill, "chrome-restart": v_chrome_restart,
+    "unban": v_unban,
 }
 
 

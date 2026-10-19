@@ -19,6 +19,9 @@ scenario="${GUARDIAN_SCENARIO:-}"
 started=$(date +%s)
 
 probe_json=$(python3 probe/probe.py --json --gap 15); probe_rc=$?
+owner_ip="${GUARDIAN_OWNER_IP:-}"
+# Из облака всё отвечает, а у владельца нет → почти наверняка бан его IP fail2ban'ом (инцидент 2026-10-19 20:36).
+if [ $probe_rc -eq 0 ] && [ -n "$owner_ip" ] && [ -z "$scenario" ]; then scenario=ban; fi
 if [ $probe_rc -eq 0 ] && [ "${GUARDIAN_FORCE:-0}" != 1 ] && [ -z "$scenario" ]; then
   echo "пинг зелёный — сбой не подтвердился: $reason"
   tg send "ℹ️ Хранитель: тревога не подтвердилась (снаружи всё отвечает). Причина побудки: $reason" >/dev/null
@@ -27,6 +30,7 @@ fi
 
 failed=$(python3 -c 'import json,sys; s=json.loads(sys.argv[1]); print("\n".join("• %s — %s" % (r["name"], r["error"] or "код %s" % r["code"]) for r in s["failed"]) or "• снаружи всё отвечает")' "$probe_json")
 title="🚨 Сбой: разбираюсь"; [ "$scenario" = canary ] && title="🧪 Учения хранителя: канарейка"
+[ "$scenario" = ban ] && title="🚫 У вас всё недоступно, из облака сервер отвечает — проверяю бан вашего IP $owner_ip"
 tg send "$title
 $failed
 Побудка: $reason
@@ -39,6 +43,12 @@ if [ "$scenario" = canary ]; then
 УЧЕНИЯ: снаружи всё может быть зелёным. Проверь канарейку — юнит poh-guardian-canary, http 8649 /healthz.
 Если она не отвечает — найди доказательство в logs/units и подними её restart. Прод-сервисы не трогай."
 fi
+if [ "$scenario" = ban ]; then
+  task="$task
+БАН: у владельца (IP $owner_ip) сервер недоступен, а из облака отвечает. Проверь \`bans\`. Если $owner_ip забанен —
+\`unban $owner_ip\`. Затем найди источник ошибок входа: \`syslog ssh 300\` (строки [preauth] с $owner_ip незадолго
+до бана) и доложи, что их дало (обычно — короткий claude -p с SSH-MCP на Mac). Прод-сервисы не трогай."
+fi
 prompt="$(cat agent/prompt.md)
 
 ## Задача
@@ -47,6 +57,7 @@ $task"
 claude_bin="${CLAUDE_BIN:-claude}"
 # агенту — ни токена Telegram, ни ключа approved: только ./agent/g с ключом heal
 env -u TELEGRAM_BOT_TOKEN -u GUARDIAN_APPROVED_KEY_PEM "$claude_bin" -p "$prompt" \
+  --strict-mcp-config \
   --allowedTools "Bash(./agent/g:*)" \
   --disallowedTools "Read,Write,Edit,MultiEdit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,Agent,TodoWrite" \
   --max-turns 40 --output-format json > "$GUARDIAN_STATE/run.json" 2> "$GUARDIAN_STATE/run.err"

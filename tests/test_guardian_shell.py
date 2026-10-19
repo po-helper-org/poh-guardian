@@ -33,6 +33,11 @@ class HealModeTest(unittest.TestCase):
         with self.assertRaises(gs.Refused):
             gs.run("heal", "http 8628 /x;id")
 
+    def test_unban_validates_ip(self):
+        for bad in ("1.2.3", "1.2.3.4; id", "300.1.1.1", "--all"):
+            with self.assertRaises(gs.Refused, msg=bad):
+                gs.run("heal", "unban " + bad)
+
     def test_empty_mode_refused(self):
         with self.assertRaises(gs.Refused):
             gs.run("", "overview")
