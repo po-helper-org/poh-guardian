@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: "22"}
-      - name: Claude Code CLI
+      - name: Claude Code CLI (как раннер; модель — GLM через Z.AI)
         run: npm install -g @anthropic-ai/claude-code@2.1.285
       - name: ключ heal (только белый список на сервере)
         env: {HEAL_KEY: "${{ secrets.GUARDIAN_HEAL_SSH_KEY }}"}
@@ -36,7 +36,7 @@ jobs:
           GUARDIAN_SCENARIO: "${{ inputs.scenario }}"
           GUARDIAN_FORCE: "${{ inputs.force || '0' }}"
           GUARDIAN_OWNER_IP: "${{ inputs.owner_ip }}"
-          CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
+          ZAI_API_KEY: "${{ secrets.ZAI_API_KEY }}"   # GLM Coding Plan; подписка Claude не используется
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
           TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
           GUARDIAN_APPROVED_KEY_PEM: "${{ secrets.GUARDIAN_APPROVED_SSH_KEY }}"

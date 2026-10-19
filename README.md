@@ -9,11 +9,13 @@
 
 Всё, что вне белого списка, присылает кнопкой ✅/❌.
 
+Агент думает на **GLM (Z.AI Coding Plan)** — подписка Claude владельца не используется (поправка в ADR 0001).
+
 **Когда нужен.** Всегда. Почему он живёт вне сервера и почему так устроен — [ADR 0001](docs/adr/0001-guardian-outside-dede.md).
 
 ```
 Mac (каждые 2 мин) ─┐                     ┌─ Telegram: 🚨 → доклад → ✅/❌
-GitHub cron (3 ч)  ─┼─ probe.py ─сбой×2─▶ heal.sh ─ claude -p ─ ./agent/g ──SSH(ключ heal)──▶ guardian-shell на dede
+GitHub cron (3 ч)  ─┼─ probe.py ─сбой×2─▶ heal.sh ─ GLM (claude -p → Z.AI) ─ ./agent/g ──SSH(ключ heal)──▶ guardian-shell на dede
 руками (Actions)   ─┘                     └─ по ✅: approve-run ──SSH(ключ approved)──▶ команда под aleks
 ```
 
@@ -28,7 +30,7 @@ GitHub cron (3 ч)  ─┼─ probe.py ─сбой×2─▶ heal.sh ─ claude -
 |---|---|---|
 | Серверная часть (оболочка, `poh-restart`, канарейка, ключи) | агент | `rsync` репо в `~/Projects/poh-guardian`, `bash server/install.sh` (`--check`, `--remove`) |
 | SSH-ключи в секреты GitHub | агент | `gh secret set GUARDIAN_HEAL_SSH_KEY < ~/.ssh/poh_guardian_heal` (и `…APPROVED…`) |
-| Telegram-бот и токен Claude | **владелец**, ~5 мин | `bash wizard/setup-owner.sh` |
+| Telegram-бот и ключ Z.AI (GLM) | **владелец**, ~5 мин | `bash wizard/setup-owner.sh` |
 | Сторож на Mac | агент | `bash mac/install-launchd.sh` (`--remove`), журнал `~/Library/Logs/poh-guardian.log` |
 | earlyoom (не дать серверу задохнуться в swap) | **владелец**, sudo | `bash server/install-earlyoom.sh` |
 

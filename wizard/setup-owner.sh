@@ -183,14 +183,25 @@ finish() {
 # STAGES: poh-guardian — шаги владельца (≈5 минут). Запуск: bash wizard/setup-owner.sh
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=3
 cd "$(dirname "$0")/.."
 mkdir -p "$HOME/.config/poh-guardian"
-ENV_FILE="$HOME/.config/poh-guardian/telegram.env"   # для разбора на Mac, когда Actions недоступен
+ENV_FILE="$HOME/.config/poh-guardian/guardian.env"   # для разбора на Mac, когда Actions недоступен (600)
+# прежнее имя файла (до перехода на GLM) — переносим, чтобы визард помнил введённое
+[[ -f "$HOME/.config/poh-guardian/telegram.env" && ! -f "$ENV_FILE" ]] && mv "$HOME/.config/poh-guardian/telegram.env" "$ENV_FILE"
 touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
 
-banner "Хранитель сервера: Telegram-бот и токен Claude"
+# Telegram уже настроен (оба значения в файле) — этап пропускаем, секреты Actions доставляем молча
+tg_token="$(_existing TELEGRAM_BOT_TOKEN || true)"; tg_chat="$(_existing TELEGRAM_CHAT_ID || true)"
+if [[ -n "$tg_token" && -n "$tg_chat" ]]; then TG_DONE=1; TOTAL_STAGES=2; else TG_DONE=0; TOTAL_STAGES=3; fi
 
+banner "Хранитель сервера: Telegram-бот и ключ Z.AI (GLM)"
+
+if [[ $TG_DONE == 1 ]]; then
+  say "Telegram-бот уже настроен — этот шаг пропускаю."
+  secrets_now="$(gh secret list 2>/dev/null || true)"
+  grep -q '^TELEGRAM_BOT_TOKEN' <<<"$secrets_now" || set_secret TELEGRAM_BOT_TOKEN "$tg_token"
+  grep -q '^TELEGRAM_CHAT_ID' <<<"$secrets_now" || set_secret TELEGRAM_CHAT_ID "$tg_chat"
+else
 # ── 1. Telegram-бот ───────────────────────────────────────────────────────
 stage "Telegram: отдельный бот хранителя"
 say "Хранитель пишет сюда «🚨 сбой — разбираюсь», доклад и кнопки ✅/❌."
@@ -219,16 +230,26 @@ TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" \
   python3 agent/telegram.py send "🫡 Хранитель подключён. Сюда придут сбои, доклады и кнопки ✅/❌." >/dev/null
 say "Проверьте Telegram: должно прийти «🫡 Хранитель подключён»."
 pause
+fi
 
-# ── 2. Токен Claude для GitHub Actions ────────────────────────────────────
-stage "Claude: токен для агента в GitHub Actions"
-say "Агент в облаке GitHub работает на вашей подписке Claude (официальный способ — claude setup-token)."
-say "Сейчас откроется вход в браузере; после входа в терминале появится токен sk-ant-oat01-… — скопируйте его."
-pause "Готовы? Enter запустит claude setup-token"
-claude setup-token || warn "claude setup-token завершился с ошибкой — можно повторить визард позже."
-ask_secret CLAUDE_CODE_OAUTH_TOKEN "Вставьте токен (ввод скрыт):"
-[[ "$CLAUDE_CODE_OAUTH_TOKEN" == sk-ant-* ]] || warn "Токен обычно начинается с sk-ant- — проверьте, что скопировали целиком."
-set_secret CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN"   # только в GitHub, локально не храним
+# ── 2. Ключ Z.AI (GLM) для агента ─────────────────────────────────────────
+stage "Z.AI: ключ GLM для агента-хранителя"
+say "Хранитель думает на GLM (Z.AI Coding Plan) — ваша подписка Claude не используется."
+say "Можно взять существующий ключ Coding Plan или создать отдельный «guardian» (так его проще отозвать)."
+open_url "https://z.ai/manage-apikey/apikey-list"
+step "API Keys → Create a new API key (имя: guardian) → скопируйте ключ."
+ask_secret ZAI_API_KEY "Вставьте ключ Z.AI (ввод скрыт):"
+hdr="$(mktemp)"; chmod 600 "$hdr"; trap 'rm -f "$hdr"' EXIT INT TERM
+printf 'Authorization: Bearer %s\nx-api-key: %s\n' "$ZAI_API_KEY" "$ZAI_API_KEY" > "$hdr"   # ключ не в списке процессов
+code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' https://api.z.ai/api/anthropic/v1/messages \
+  -H @"$hdr" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+  -d '{"model":"glm-5.3","max_tokens":8,"messages":[{"role":"user","content":"ping"}]}' || true)
+rm -f "$hdr"
+if [[ "$code" == 200 ]]; then say "Ключ работает (Z.AI ответил 200)."
+else warn "Z.AI ответил $code — проверьте ключ и пакет Coding Plan; можно продолжить и поправить позже."; fi
+write_env ZAI_API_KEY "$ZAI_API_KEY"   # для разбора на Mac, когда Actions недоступен
+chmod 600 "$ENV_FILE"
+set_secret ZAI_API_KEY "$ZAI_API_KEY"
 pause
 
 # ── 3. Учения ─────────────────────────────────────────────────────────────
