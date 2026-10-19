@@ -5,7 +5,9 @@
 #
 # Окружение: GUARDIAN_REASON (почему разбудили), GUARDIAN_FORCE=1 (чинить, даже если пинг уже зелёный),
 # GUARDIAN_SCENARIO=canary (учения: проверить и поднять канарейку), CLAUDE_BIN (по умолчанию claude),
-# TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID, CLAUDE_CODE_OAUTH_TOKEN (в Actions).
+# TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID, ZAI_API_KEY (GLM Coding Plan; на Mac — из ~/.config/poh-guardian/guardian.env).
+# Модель — GLM (Z.AI) через Claude Code CLI с ANTHROPIC_BASE_URL; подписка Claude владельца не используется никогда:
+# CLI запускается с пустым CLAUDE_CONFIG_DIR (нет входа) и без CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export GUARDIAN_STATE="${GUARDIAN_STATE:-$PWD/.state}"
@@ -22,7 +24,10 @@ if ! mkdir "$lock" 2>/dev/null; then
   rm -rf "$lock"; mkdir "$lock" || exit 0
 fi
 echo $$ > "$lock/pid"; trap 'rm -rf "$lock"' EXIT
+cfg="$HOME/.config/poh-guardian/guardian.env"
+if [ -z "${ZAI_API_KEY:-}" ] && [ -f "$cfg" ]; then set -a; . "$cfg"; set +a; fi
 tg() { python3 agent/telegram.py "$@"; }
+probe() { ${GUARDIAN_PROBE:-python3 probe/probe.py} "$@"; }   # подмена — только для тестов
 where="${GITHUB_RUN_ID:+GitHub Actions, прогон $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID}"
 [ "$(uname)" = Darwin ] && where="${where:-Mac владельца}"
 where="${where:-$(uname -n)}"
@@ -30,7 +35,7 @@ reason="${GUARDIAN_REASON:-запуск вручную}"
 scenario="${GUARDIAN_SCENARIO:-}"
 started=$(date +%s)
 
-probe_json=$(python3 probe/probe.py --json --gap 15); probe_rc=$?
+probe_json=$(probe --json --gap 15); probe_rc=$?
 owner_ip="${GUARDIAN_OWNER_IP:-}"
 # Из облака всё отвечает, а у владельца нет → почти наверняка бан его IP fail2ban'ом (инцидент 2026-10-19 20:36).
 if [ $probe_rc -eq 0 ] && [ -n "$owner_ip" ] && [ -z "$scenario" ]; then scenario=ban; fi
@@ -67,14 +72,26 @@ prompt="$(cat agent/prompt.md)
 $task"
 
 claude_bin="${CLAUDE_BIN:-claude}"
+glm_home="$GUARDIAN_STATE/claude-home"; mkdir -p "$glm_home"   # пустой: входа Claude владельца тут нет
 # агенту — ни токена Telegram, ни ключа approved: только ./agent/g с ключом heal;
 # без MCP (оборванные SSH-MCP = бан fail2ban) и без пользовательских CLAUDE.md/хуков (--setting-sources "")
-env -u TELEGRAM_BOT_TOKEN -u GUARDIAN_APPROVED_KEY_PEM "$claude_bin" -p "$prompt" \
+if [ -z "${ZAI_API_KEY:-}" ]; then
+  echo '{"result": "агент не запущен: нет ключа Z.AI (ZAI_API_KEY) — запустите wizard/setup-owner.sh"}' > "$GUARDIAN_STATE/run.json"
+  : > "$GUARDIAN_STATE/run.err"; claude_rc=1
+else
+env -u TELEGRAM_BOT_TOKEN -u GUARDIAN_APPROVED_KEY_PEM -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY \
+    CLAUDE_CONFIG_DIR="$glm_home" ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic" \
+    ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" ANTHROPIC_MODEL="${GUARDIAN_MODEL:-glm-5.3}" \
+    ANTHROPIC_DEFAULT_OPUS_MODEL="${GUARDIAN_MODEL:-glm-5.3}" ANTHROPIC_DEFAULT_SONNET_MODEL="${GUARDIAN_MODEL:-glm-5.3}" \
+    ANTHROPIC_DEFAULT_HAIKU_MODEL="glm-5.3-flash" API_TIMEOUT_MS=600000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    ZAI_API_KEY= \
+  "$claude_bin" -p "$prompt" \
   --strict-mcp-config --setting-sources "" --permission-mode default \
   --allowedTools "Bash(./agent/g:*)" \
   --disallowedTools "Read,Write,Edit,MultiEdit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,Agent,TodoWrite" \
   --max-turns 40 --output-format json > "$GUARDIAN_STATE/run.json" 2> "$GUARDIAN_STATE/run.err"
 claude_rc=$?
+fi
 report=$(python3 -c '
 import json,sys
 try:
@@ -89,7 +106,7 @@ except Exception as e:
 printf '%s' "$report" > "$GUARDIAN_STATE/report_raw.txt"
 n=$(python3 agent/proposals.py split "$GUARDIAN_STATE") || { n=0; cp "$GUARDIAN_STATE/report_raw.txt" "$GUARDIAN_STATE/report.txt"; echo '[]' > "$GUARDIAN_STATE/proposals.json"; }
 
-python3 probe/probe.py --json --gap 0 > "$GUARDIAN_STATE/probe_after.json"; after_rc=$?
+probe --json --gap 0 > "$GUARDIAN_STATE/probe_after.json"; after_rc=$?
 mins=$(( ($(date +%s) - started + 59) / 60 ))
 if [ $after_rc -eq 0 ]; then head="✅ Работает снова (≈${mins} мин)"; else head="⚠️ Не всё поднялось (≈${mins} мин)"; fi
 [ "$scenario" = canary ] && head="🧪 Учения: доклад агента (≈${mins} мин)"
@@ -106,7 +123,7 @@ for ((i = 0; i < n; i++)); do
   if [ "$ans" = yes ]; then
     cmd=$(python3 agent/proposals.py cmd "$GUARDIAN_STATE/proposals.json" "$i")
     out=$(./agent/approve-run "$cmd" 2>&1 | tail -c 1500)
-    python3 probe/probe.py --gap 10 >/dev/null && st="снаружи всё отвечает" || st="снаружи ещё есть сбои"
+    probe --gap 10 >/dev/null && st="снаружи всё отвечает" || st="снаружи ещё есть сбои"
     tg send "Выполнено: $cmd
 $out
 Пинг: $st" >/dev/null

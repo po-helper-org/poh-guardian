@@ -186,10 +186,12 @@ finish() {
 TOTAL_STAGES=3
 cd "$(dirname "$0")/.."
 mkdir -p "$HOME/.config/poh-guardian"
-ENV_FILE="$HOME/.config/poh-guardian/telegram.env"   # для разбора на Mac, когда Actions недоступен
+ENV_FILE="$HOME/.config/poh-guardian/guardian.env"   # для разбора на Mac, когда Actions недоступен (600)
+# прежнее имя файла (до перехода на GLM) — переносим, чтобы визард помнил введённое
+[[ -f "$HOME/.config/poh-guardian/telegram.env" && ! -f "$ENV_FILE" ]] && mv "$HOME/.config/poh-guardian/telegram.env" "$ENV_FILE"
 touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
 
-banner "Хранитель сервера: Telegram-бот и токен Claude"
+banner "Хранитель сервера: Telegram-бот и ключ Z.AI (GLM)"
 
 # ── 1. Telegram-бот ───────────────────────────────────────────────────────
 stage "Telegram: отдельный бот хранителя"
@@ -220,15 +222,21 @@ TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" \
 say "Проверьте Telegram: должно прийти «🫡 Хранитель подключён»."
 pause
 
-# ── 2. Токен Claude для GitHub Actions ────────────────────────────────────
-stage "Claude: токен для агента в GitHub Actions"
-say "Агент в облаке GitHub работает на вашей подписке Claude (официальный способ — claude setup-token)."
-say "Сейчас откроется вход в браузере; после входа в терминале появится токен sk-ant-oat01-… — скопируйте его."
-pause "Готовы? Enter запустит claude setup-token"
-claude setup-token || warn "claude setup-token завершился с ошибкой — можно повторить визард позже."
-ask_secret CLAUDE_CODE_OAUTH_TOKEN "Вставьте токен (ввод скрыт):"
-[[ "$CLAUDE_CODE_OAUTH_TOKEN" == sk-ant-* ]] || warn "Токен обычно начинается с sk-ant- — проверьте, что скопировали целиком."
-set_secret CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN"   # только в GitHub, локально не храним
+# ── 2. Ключ Z.AI (GLM) для агента ─────────────────────────────────────────
+stage "Z.AI: ключ GLM для агента-хранителя"
+say "Хранитель думает на GLM (Z.AI Coding Plan) — ваша подписка Claude не используется."
+say "Можно взять существующий ключ Coding Plan или создать отдельный «guardian» (так его проще отозвать)."
+open_url "https://z.ai/manage-apikey/apikey-list"
+step "API Keys → Create a new API key (имя: guardian) → скопируйте ключ."
+ask_secret ZAI_API_KEY "Вставьте ключ Z.AI (ввод скрыт):"
+code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' https://api.z.ai/api/anthropic/v1/messages \
+  -H "x-api-key: $ZAI_API_KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+  -d '{"model":"glm-5.3","max_tokens":8,"messages":[{"role":"user","content":"ping"}]}' || true)
+if [[ "$code" == 200 ]]; then say "Ключ работает (Z.AI ответил 200)."
+else warn "Z.AI ответил $code — проверьте ключ и пакет Coding Plan; можно продолжить и поправить позже."; fi
+write_env ZAI_API_KEY "$ZAI_API_KEY"   # для разбора на Mac, когда Actions недоступен
+chmod 600 "$ENV_FILE"
+set_secret ZAI_API_KEY "$ZAI_API_KEY"
 pause
 
 # ── 3. Учения ─────────────────────────────────────────────────────────────
