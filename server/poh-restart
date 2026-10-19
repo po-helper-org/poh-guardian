@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# poh-restart <юнит> [--by "кто/зачем"] [--health URL]
+# Перезапуск прод-юнита aleks со следом: кто, когда, стал ли active и отвечает ли health.
+# Пишет строку в ~/.local/state/poh-guardian/changes.jsonl — её читает хранитель
+# (`guardian-shell changes`), чтобы при сбое видеть, кто что трогал перед ним.
+set -uo pipefail
+unit="${1:?usage: poh-restart <unit> [--by text] [--health url]}"; shift
+by="${POH_BY:-${USER}}"; health=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --by) by="$2"; shift 2 ;;
+    --health) health="$2"; shift 2 ;;
+    *) echo "неизвестный ключ $1" >&2; exit 2 ;;
+  esac
+done
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+state="$HOME/.local/state/poh-guardian"; mkdir -p "$state"
+before=$(systemctl --user is-active "$unit" 2>/dev/null)
+systemctl --user restart "$unit"; rc=$?
+after="inactive"
+for _ in $(seq 1 15); do
+  after=$(systemctl --user is-active "$unit" 2>/dev/null)
+  [ "$after" = active ] && break; sleep 1
+done
+code=""
+if [ -n "$health" ]; then
+  for _ in $(seq 1 20); do
+    code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$health")
+    case "$code" in 2*|3*) break ;; esac; sleep 1
+  done
+fi
+from="${SSH_CONNECTION%% *}"
+python3 - "$state/changes.jsonl" "$unit" "$by" "$before" "$after" "$rc" "$code" "$from" <<'PY'
+import json, sys, time
+path, unit, by, before, after, rc, code, frm = sys.argv[1:]
+rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "action": "restart", "unit": unit, "by": by,
+       "before": before, "after": after, "rc": int(rc), "health": code or None, "from": frm or None}
+open(path, "a").write(json.dumps(rec, ensure_ascii=False) + "\n")
+PY
+echo "poh-restart $unit: $before → $after${code:+, health $code}"
+[ "$after" = active ] || { echo "⚠️  $unit не поднялся — смотри journalctl --user -u $unit -n 50" >&2; exit 1; }
+case "$code" in ""|2*|3*) exit 0 ;; *) echo "⚠️  health $health → $code" >&2; exit 1 ;; esac

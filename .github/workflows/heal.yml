@@ -1,0 +1,54 @@
+name: heal
+# ИИ-агент хранителя: подтвердить сбой, починить в белом списке, доложить в Telegram.
+# Будят: probe.yml (cron), сторож на Mac (gh workflow run), руками (Actions → heal → Run).
+on:
+  workflow_dispatch:
+    inputs:
+      reason: {description: "Почему разбудили", default: "запуск вручную"}
+      scenario: {description: "canary — учения на канарейке", default: ""}
+      force: {description: "1 — разбирать, даже если пинг зелёный", default: "0"}
+      owner_ip: {description: "IP владельца, если у него недоступно (проверить бан fail2ban)", default: ""}
+  workflow_call:
+    inputs:
+      reason: {type: string, default: "пинг по расписанию"}
+
+concurrency: {group: heal, cancel-in-progress: false}
+permissions: {contents: read}
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.285
+      - name: ключ heal (только белый список на сервере)
+        env: {HEAL_KEY: "${{ secrets.GUARDIAN_HEAL_SSH_KEY }}"}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$HEAL_KEY" > ~/.ssh/poh_guardian_heal && chmod 600 ~/.ssh/poh_guardian_heal
+      - name: разбор и починка
+        env:
+          GUARDIAN_REASON: "${{ inputs.reason }}"
+          GUARDIAN_SCENARIO: "${{ inputs.scenario }}"
+          GUARDIAN_FORCE: "${{ inputs.force || '0' }}"
+          GUARDIAN_OWNER_IP: "${{ inputs.owner_ip }}"
+          CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
+          TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
+          GUARDIAN_APPROVED_KEY_PEM: "${{ secrets.GUARDIAN_APPROVED_SSH_KEY }}"
+        run: ./agent/heal.sh
+      - name: следы прогона (без секретов)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heal-${{ github.run_id }}
+          path: |
+            .state/report.txt
+            .state/proposals.json
+            .state/probe_after.json
+          retention-days: 30
+          if-no-files-found: ignore

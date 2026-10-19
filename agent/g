@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# ./agent/g <команда guardian-shell>  — единственный инструмент ИИ-агента.
+# Ключ heal: на сервере forced command пускает только белый список (server/guardian-shell).
+# Предохранитель fail2ban — agent/sshguard.sh (общий с approve-run).
+set -uo pipefail
+dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=sshguard.sh
+. "$dir/sshguard.sh"
+key="$HOME/.ssh/poh_guardian_heal"   # без переопределения из окружения
+guard_check || exit 255
+ssh -i "$key" -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=25 \
+    -o ServerAliveInterval=10 -o ServerAliveCountMax=3 \
+    -o UserKnownHostsFile="$dir/known_hosts" -o StrictHostKeyChecking=yes \
+    -o ControlMaster=no -o ControlPath=none \
+    aleks@135.106.218.5 "$*"
+rc=$?
+guard_record $rc
+exit $rc
