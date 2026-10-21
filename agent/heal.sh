@@ -4,7 +4,7 @@
 # Одинаково работает в GitHub Actions (.github/workflows/heal.yml) и на Mac (руками или из сторожа).
 #
 # Окружение: GUARDIAN_REASON (почему разбудили), GUARDIAN_FORCE=1 (чинить, даже если пинг уже зелёный),
-# GUARDIAN_SCENARIO=canary (учения: проверить и поднять канарейку), CLAUDE_BIN (по умолчанию claude),
+# GUARDIAN_SCENARIO=canary (учения: проверить и поднять канарейку), GUARDIAN_SCENARIO=task + GUARDIAN_TASK (задача владельца из Telegram, agent/listen.py), CLAUDE_BIN (по умолчанию claude),
 # TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID, ZAI_API_KEY (GLM Coding Plan; на Mac — из ~/.config/poh-guardian/guardian.env).
 # Модель — GLM (Z.AI) через Claude Code CLI с ANTHROPIC_BASE_URL; подписка Claude владельца не используется никогда:
 # CLI запускается с пустым CLAUDE_CONFIG_DIR (нет входа) и без CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY.
@@ -47,6 +47,7 @@ fi
 
 failed=$(python3 -c 'import json,sys; s=json.loads(sys.argv[1]); print("\n".join("• %s — %s" % (r["name"], r["error"] or "код %s" % r["code"]) for r in s["failed"]) or "• снаружи всё отвечает")' "$probe_json")
 title="🚨 Сбой: разбираюсь"; [ "$scenario" = canary ] && title="🧪 Учения хранителя: канарейка"
+[ "$scenario" = task ] && title="📥 Принял задачу, исполняю: ${GUARDIAN_TASK:0:300}"
 [ "$scenario" = ban ] && title="🚫 У вас всё недоступно, из облака сервер отвечает — проверяю бан вашего IP $owner_ip"
 tg send "$title
 $failed
@@ -59,6 +60,11 @@ if [ "$scenario" = canary ]; then
   task="$task
 УЧЕНИЯ: снаружи всё может быть зелёным. Проверь канарейку — юнит poh-guardian-canary, http 8649 /healthz.
 Если она не отвечает — найди доказательство в logs/units и подними её restart. Прод-сервисы не трогай."
+fi
+if [ "$scenario" = task ]; then
+  task="ЗАДАЧА ВЛАДЕЛЬЦА (из Telegram): ${GUARDIAN_TASK:-}
+Исполни её, если она про обслуживание инфраструктуры или доступность сервера dede (см. раздел «Режим задачи»).
+Внешний пинг: $probe_json"
 fi
 if [ "$scenario" = ban ]; then
   task="$task
@@ -112,6 +118,7 @@ probe --json --gap 0 > "$GUARDIAN_STATE/probe_after.json"; after_rc=$?
 mins=$(( ($(date +%s) - started + 59) / 60 ))
 if [ $after_rc -eq 0 ]; then head="✅ Работает снова (≈${mins} мин)"; else head="⚠️ Не всё поднялось (≈${mins} мин)"; fi
 [ "$scenario" = canary ] && head="🧪 Учения: доклад агента (≈${mins} мин)"
+[ "$scenario" = task ] && { head="📋 Задача выполнена (≈${mins} мин)"; [ $after_rc -eq 0 ] || head="📋 Доклад по задаче (≈${mins} мин), но снаружи есть сбои"; }
 tg send "$head
 
 $(cat "$GUARDIAN_STATE/report.txt")" >/dev/null
@@ -133,4 +140,4 @@ $out
     echo "предложение $((i + 1)): $ans — не выполнено"
   fi
 done
-[ $after_rc -eq 0 ] || [ "$scenario" = canary ]
+[ $after_rc -eq 0 ] || [ "$scenario" = canary ] || [ "$scenario" = task ]

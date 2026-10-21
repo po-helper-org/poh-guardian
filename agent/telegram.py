@@ -65,7 +65,20 @@ class Bot:
         self.call("editMessageText", chat_id=self.chat_id, message_id=int(message_id),
                   text=text[:LIMIT], disable_web_page_preview=True)
 
-    def ask(self, text, timeout=1800, clock=time.time):
+    def messages(self, offset, wait=25):
+        """Текстовые сообщения владельца: (новый offset, [{text, date}]). Чужие чаты и кнопки пропускаются."""
+        got = self.call("getUpdates", offset=offset, timeout=wait, allowed_updates=["message"])
+        out = []
+        for upd in got:
+            offset = upd["update_id"] + 1
+            m = upd.get("message") or {}
+            if str(m.get("chat", {}).get("id")) != self.chat_id or str(m.get("from", {}).get("id")) != self.chat_id:
+                continue
+            if m.get("text"):
+                out.append({"text": m["text"], "date": m.get("date", 0)})
+        return offset, out
+
+    def ask(self, text, timeout=1800, clock=time.time, sleep=time.sleep):
         """Кнопки ✅/❌. Ответ принимается только из чата владельца и только на это сообщение."""
         if not self.configured:
             print("[telegram не настроен — вопрос без ответа] " + text, file=sys.stderr)
@@ -77,8 +90,12 @@ class Bot:
         deadline = clock() + timeout
         while clock() < deadline:
             wait = int(max(1, min(50, deadline - clock())))
-            for upd in self.call("getUpdates", offset=offset, timeout=wait,
-                                 allowed_updates=["callback_query"]):
+            try:
+                got = self.call("getUpdates", offset=offset, timeout=wait, allowed_updates=["callback_query"])
+            except RuntimeError:  # 409: параллельно читает слушатель задач — повторить
+                sleep(3)
+                continue
+            for upd in got:
                 offset = upd["update_id"] + 1
                 cq = upd.get("callback_query")
                 if not cq or str(cq.get("message", {}).get("chat", {}).get("id")) != self.chat_id:
