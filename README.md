@@ -20,6 +20,11 @@ GitHub cron (3 ч)  ─┼─ probe.py ─сбой×2─▶ heal.sh ─ GLM (cla
 ```
 
 ## Как пользоваться
+- **Поручить задачу (с 2026-10-21):** написать боту хранителя в Telegram обычным текстом — «почему лежит Инбокс?»,
+  «перезапусти matrix-synapse», «что с диском?». Слушатель (`agent/listen.py`, launchd `ru.aleksishmanov.poh-guardian-listen`,
+  работает, пока Mac не спит) шлёт 📥 «Принял», агент исполняет в белом списке, затем 📋 доклад. Вне белого списка —
+  кнопки ✅/❌. Не про инфраструктуру/доступность dede — агент откажет. Читается только личка владельца; задача старше 1 ч
+  не исполняется (бот сам скажет). `/help` — подсказка. Журнал: `~/Library/Logs/poh-guardian-listen.log`.
 - **Учения:** `ssh harness-mts 'systemctl --user stop poh-guardian-canary'` → GitHub → Actions → heal →
   Run workflow → `scenario=canary`. Через 2–4 мин в Telegram придёт доклад «канарейка поднята».
 - **Разбудить руками:** `gh workflow run heal.yml -R po-helper-org/poh-guardian -f force=1 -f reason="…"`.
