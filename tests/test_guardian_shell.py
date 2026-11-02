@@ -3,12 +3,21 @@ import importlib.util
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 PATH = os.path.join(os.path.dirname(__file__), "..", "server", "guardian-shell")
 loader = importlib.machinery.SourceFileLoader("guardian_shell", PATH)
 spec = importlib.util.spec_from_loader("guardian_shell", loader)
 gs = importlib.util.module_from_spec(spec)
-loader.exec_module(gs)
+_home = os.environ.get("HOME")
+os.environ["HOME"] = tempfile.mkdtemp()  # конфиг и состояние — не из ~ разработчика
+try:
+    loader.exec_module(gs)
+finally:
+    if _home is None:
+        os.environ.pop("HOME", None)
+    else:
+        os.environ["HOME"] = _home
 
 
 class HealModeTest(unittest.TestCase):
@@ -85,10 +94,31 @@ class KillableTest(unittest.TestCase):
         self.assertFalse(ok)
 
 
+class ConfTest(unittest.TestCase):
+    def test_comments_ignored(self):
+        path = os.path.join(tempfile.mkdtemp(), "guardian-shell.conf")
+        with open(path, "w") as f:
+            f.write("# extra_units = x\nextra_units = a b # c\ncorpchat_container = box  # d\n")
+        self.assertEqual(gs.read_conf(path), {"extra_units": "a b", "corpchat_container": "box"})
+
+    def test_missing_file_is_empty(self):
+        self.assertEqual(gs.read_conf(os.path.join(tempfile.mkdtemp(), "nope")), {})
+
+    def test_extra_units_filtered(self):
+        units = gs.conf_units({"extra_units": "news-x hermes-gateway repowise-mcp -it a;id $(id) ok@1"})
+        self.assertEqual(units, {"news-x", "ok@1"})
+
+    def test_chrome_restart_corpchat_needs_valid_container(self):
+        for conf in ({}, {"corpchat_container": "-it"}, {"corpchat_container": "a;id"}):
+            with mock.patch.object(gs, "CONF", conf), self.assertRaises(gs.Refused, msg=conf):
+                gs.run("heal", "chrome-restart corpchat")
+
+
 class ApprovedGuardTest(unittest.TestCase):
     def test_secrets_refused(self):
         for cmd in ("cat ~/.hermes/.env", "cat ~/.config/corp-link/bot.env", "cat /proc/123/environ",
-                    "less ~/.ssh/authorized_keys", "printenv"):
+                    "less ~/.ssh/authorized_keys", "printenv", "cat ~/.config/acme-2_vpn_env",
+                    "cp ~/acme_vpn_env.bak /tmp/"):
             with self.assertRaises(gs.Refused, msg=cmd):
                 gs.guard_secret(cmd)
 

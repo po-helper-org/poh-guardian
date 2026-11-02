@@ -21,17 +21,33 @@ HOME = os.path.expanduser("~")
 STATE = os.path.join(HOME, ".local/state/poh-guardian")
 CHANGES = os.path.join(STATE, "changes.jsonl")
 RESTARTS = os.path.join(STATE, "restarts.json")
+# Имена юнитов и контейнера интеграций с корпоративным мессенджером — в конфиге на сервере
+# (строки «ключ = значение», всё после # — комментарий; образец — server/guardian-shell.conf.example).
+CONF_PATH = os.path.join(HOME, ".config/poh-guardian/guardian-shell.conf")
+
+
+def read_conf(path=CONF_PATH):
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = [line.split("#", 1)[0] for line in f]
+    except OSError:
+        return {}
+    return {k.strip(): v.strip() for k, v in (line.split("=", 1) for line in lines if "=" in line)}
+
+
+CONF = read_conf()
 
 # Юниты aleks, которые агент вправе перезапускать сам. Не входят:
 # hermes-gateway (боты молчат ~4 мин и применяется всё накопленное в конфигах — только по ✅),
 # repowise-mcp (рвёт сессии), всё системное (нужен sudo).
+ONLY_BY_APPROVAL = {"hermes-gateway", "repowise-mcp"}
 RESTARTABLE = {
     "matrix-synapse", "hermes-dashboard", "poh-harness", "pi-web", "pi-web-sessiond",
-    "pi-totp-gate", "dsh-token-relay", "poh-feed", "news-start", "news-mtslink",
+    "pi-totp-gate", "dsh-token-relay", "poh-feed", "news-start",
     "corp-link", "corp-link-bot", "corp-jira", "corp-mail", "corp-chrome-watchdog",
     "po-sprint-observe", "poh-sprint-agent", "poh-sprint-daily",
     "poh-widget-manager", "poh-widget-calendar", "poh-widget-inbox", "poh-widget-harness",
-    "poh-widget-mtslink-room", "poh-widget-messenger-connector", "poh-widget-telegram-connector",
+    "poh-widget-messenger-connector", "poh-widget-telegram-connector",
     "poh-widget-sprint-business", "poh-widget-news", "poh-hermes-bridge",
     "comunager-bridge", "comunager-groups", "mautrix-telegram", "obs-llm-exporter",
     "poh-guardian-canary",
@@ -49,7 +65,7 @@ NEVER_KILL = [r"hermes", r"synapse", r"sshd", r"systemd", r"nginx", r"gotosocial
 SECRET = re.compile(
     r"\.env\b|auth\.json|\.hermes/(config\.yaml|profiles/[^ ]*/config)|/\.ssh/|bot\.env|"
     r"credentials|exchange\.(env|pass)|hermes-key|agent-token|zai-keys|letsencrypt|chpasswd|"
-    r"matrix-accounts|mts_vpn_env|\.vpn\b|SUDO_PASSWORD|/proc/[0-9]+/environ|\bprintenv\b|"
+    r"matrix-accounts|vpn_env|\.vpn\b|SUDO_PASSWORD|/proc/[0-9]+/environ|\bprintenv\b|"
     r"\.google_authenticator|signing\.key|registration\.yaml|feed-token|secrets/|/etc/wireguard",
     re.I)
 REDACT = [
@@ -59,6 +75,15 @@ REDACT = [
     (re.compile(r"[A-Za-z0-9+/_-]{48,}={0,2}"), "***"),
 ]
 UNIT_RE = re.compile(r"^[A-Za-z0-9@._-]{1,80}$")
+# Имена из конфига идут в sh() (units, docker exec): не с «-», иначе это опция.
+CONF_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._-]{0,79}$")
+
+
+def conf_units(conf):
+    return {u for u in conf.get("extra_units", "").split() if CONF_NAME_RE.match(u)} - ONLY_BY_APPROVAL
+
+
+RESTARTABLE |= conf_units(CONF)
 PATH_RE = re.compile(r"^/[A-Za-z0-9/._?=&%-]{0,200}$")
 
 ENV = dict(os.environ, XDG_RUNTIME_DIR="/run/user/%d" % os.getuid(), LC_ALL="C.UTF-8",
@@ -139,7 +164,7 @@ def v_overview(_):
 
 
 def v_units(_):
-    units = sorted(RESTARTABLE | {"hermes-gateway", "repowise-mcp"})
+    units = sorted(RESTARTABLE | ONLY_BY_APPROVAL)
     return sh("for u in %s; do printf '%%-34s %%s\\n' $u $(systemctl --user is-active $u); done"
               % " ".join(units))
 
@@ -303,11 +328,11 @@ def v_kill(args):
 
 
 def v_chrome_restart(args):
-    name = {"corp": "corp-chrome", "mtslink": "mtslink-chrome"}.get(args[0] if args else "")
-    if not name:
-        raise Refused("chrome-restart corp|mtslink")
+    name = {"corp": "corp-chrome", "corpchat": CONF.get("corpchat_container", "")}.get(args[0] if args else "")
+    if not name or not CONF_NAME_RE.match(name):
+        raise Refused("chrome-restart corp|corpchat (контейнер corpchat — corpchat_container в %s)" % CONF_PATH)
     _restart_budget("chrome:" + name, time.time())
-    # CDP есть только у corp-chrome (9222); у mtslink-chrome CDP нет — смотрим, что chrome снова запущен
+    # CDP есть только у corp-chrome (9222); у Chrome корпоративного мессенджера CDP нет — смотрим, что chrome снова запущен
     after = ("curl -s -m 5 -o /dev/null -w 'CDP %{http_code}' http://127.0.0.1:9222/json/version"
              if name == "corp-chrome" else
              "sg docker -c 'docker exec %s pgrep -c -x chrome' | sed 's/^/процессов chrome: /'" % name)

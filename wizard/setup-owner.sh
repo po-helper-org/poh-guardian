@@ -257,12 +257,12 @@ stage "Учения: агент поднимает канарейку"
 say "Остановим тестовый сервис-канарейку на сервере и разбудим агента в GitHub Actions."
 say "Через 2–4 минуты в Telegram: «🧪 Учения…», затем доклад «канарейка поднята»."
 if confirm "Запустить учения?"; then
-  ssh harness-mts 'systemctl --user stop poh-guardian-canary' || warn "не смог остановить канарейку по SSH"
+  ssh harness-prod 'systemctl --user stop poh-guardian-canary' || warn "не смог остановить канарейку по SSH"
   gh workflow run heal.yml -f scenario=canary -f reason="учения из визарда" \
     && { sleep 8; gh run watch "$(gh run list --workflow heal.yml -L 1 --json databaseId -q '.[0].databaseId')" || true; } \
     || SKIPPED+=("учения: gh workflow run heal.yml -f scenario=canary")
 else
-  SKIPPED+=("учения: gh workflow run heal.yml -f scenario=canary (после ssh harness-mts 'systemctl --user stop poh-guardian-canary')")
+  SKIPPED+=("учения: gh workflow run heal.yml -f scenario=canary (после ssh harness-prod 'systemctl --user stop poh-guardian-canary')")
 fi
 
 finish

@@ -9,6 +9,7 @@ stamp="$(date +%Y%m%d%H%M%S)"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 bin="$HOME/.local/bin"; ak="$HOME/.ssh/authorized_keys"
 canary="$HOME/.local/share/poh-guardian/canary"; unitdir="$HOME/.config/systemd/user"
+conf="$HOME/.config/poh-guardian/guardian-shell.conf"
 
 key_line() { # mode pubfile
   printf 'restrict,command="%s/guardian-shell %s" %s\n' "$bin" "$1" "$(cut -d' ' -f1,2 "$2") poh-guardian-$1"
@@ -24,6 +25,8 @@ check() {
   done
   [ "$(systemctl --user is-enabled poh-guardian-canary 2>/dev/null)" = enabled ] \
     && echo "ok   канарейка: $(systemctl --user is-active poh-guardian-canary)" || { echo "FAIL канарейка не включена"; bad=1; }
+  grep -qE '^[[:space:]]*(extra_units|corpchat_container)[[:space:]]*=' "$conf" 2>/dev/null && echo "ok   $conf" \
+    || echo "WARN в $conf нет имён корпоративного мессенджера — его юниты и Chrome хранитель не перезапустит"
   return $bad
 }
 
@@ -54,6 +57,7 @@ esac
 mkdir -p "$bin" "$canary" "$unitdir" "$HOME/.local/state/poh-guardian"
 install -m 755 "$here/guardian-shell" "$bin/guardian-shell"
 install -m 755 "$here/poh-restart" "$bin/poh-restart"
+[ -e "$conf" ] || install -D -m 600 "$here/guardian-shell.conf.example" "$conf"
 echo ok > "$canary/healthz"
 install -m 644 "$here/poh-guardian-canary.service" "$unitdir/poh-guardian-canary.service"
 systemctl --user daemon-reload
