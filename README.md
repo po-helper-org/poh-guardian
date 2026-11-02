@@ -25,8 +25,9 @@ GitHub cron (3 ч)  ─┼─ probe.py ─сбой×2─▶ heal.sh ─ GLM (cla
   работает, пока Mac не спит) шлёт 📥 «Принял», агент исполняет в белом списке, затем 📋 доклад. Вне белого списка —
   кнопки ✅/❌. Не про инфраструктуру/доступность dede — агент откажет. Читается только личка владельца; задача старше 1 ч
   не исполняется (бот сам скажет). `/help` — подсказка. Журнал: `~/Library/Logs/poh-guardian-listen.log`.
-- **Учения:** `ssh harness-mts 'systemctl --user stop poh-guardian-canary'` → GitHub → Actions → heal →
+- **Учения:** `ssh harness-prod 'systemctl --user stop poh-guardian-canary'` → GitHub → Actions → heal →
   Run workflow → `scenario=canary`. Через 2–4 мин в Telegram придёт доклад «канарейка поднята».
+  `harness-prod` — `Host` сервера dede в `~/.ssh/config` на Mac.
 - **Разбудить руками:** `gh workflow run heal.yml -R po-helper-org/poh-guardian -f force=1 -f reason="…"`.
 - **На Mac без GitHub:** `GUARDIAN_FORCE=1 ./agent/heal.sh`.
 
@@ -34,6 +35,7 @@ GitHub cron (3 ч)  ─┼─ probe.py ─сбой×2─▶ heal.sh ─ GLM (cla
 | Что | Кто | Команда |
 |---|---|---|
 | Серверная часть (оболочка, `poh-restart`, канарейка, ключи) | агент | `rsync` репо в `~/Projects/poh-guardian`, `bash server/install.sh` (`--check`, `--remove`) |
+| Имена юнитов и контейнера Chrome корпоративного мессенджера (без них хранитель их не перезапускает) | **владелец** | вписать в `~/.config/poh-guardian/guardian-shell.conf` на сервере (образец `server/guardian-shell.conf.example`, `install.sh` кладёт его, если файла нет) |
 | SSH-ключи в секреты GitHub | агент | `gh secret set GUARDIAN_HEAL_SSH_KEY < ~/.ssh/poh_guardian_heal` (и `…APPROVED…`) |
 | Telegram-бот и ключ Z.AI (GLM) | **владелец**, ~5 мин | `bash wizard/setup-owner.sh` |
 | Сторож на Mac | агент | `bash mac/install-launchd.sh` (`--remove`), журнал `~/Library/Logs/poh-guardian.log` |
@@ -46,5 +48,7 @@ GitHub cron (3 ч)  ─┼─ probe.py ─сбой×2─▶ heal.sh ─ GLM (cla
 
 ## Разработка
 `python3 -m unittest discover -s tests`. Python 3.9+ (Mac), сервер — 3.10, только stdlib.
-Белый список юнитов и процессов — в `server/guardian-shell` (`RESTARTABLE`, `KILLABLE`). Ранбук агента —
-`agent/prompt.md`, туда же дописывать новые известные причины из «Журнала инцидентов».
+Белый список юнитов и процессов — в `server/guardian-shell` (`RESTARTABLE`, `KILLABLE`); имена юнитов
+интеграций с корпоративным мессенджером — в `~/.config/poh-guardian/guardian-shell.conf` на сервере
+(образец `server/guardian-shell.conf.example`). Ранбук агента — `agent/prompt.md`, туда же дописывать новые
+известные причины из «Журнала инцидентов».

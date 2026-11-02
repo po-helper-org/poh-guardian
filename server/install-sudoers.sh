@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Шаг владельца (sudo): разрешить хранителю под aleks ТОЛЬКО смотреть и снимать бан fail2ban в jail sshd.
-# Запуск: ssh -t harness-mts 'sudo bash ~/Projects/poh-guardian/server/install-sudoers.sh'   (--remove — снять)
+# Запуск: ssh -t harness-prod 'sudo bash ~/Projects/poh-guardian/server/install-sudoers.sh'   (--remove — снять)
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "нужен sudo"; exit 1; }
 f=/etc/sudoers.d/poh-guardian

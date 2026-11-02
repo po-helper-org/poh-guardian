@@ -1,0 +1,11 @@
+# Конфиг guardian-shell на сервере, не в git: ~/.config/poh-guardian/guardian-shell.conf
+# (bash server/install.sh кладёт туда этот образец, если файла нет; --check предупредит, пока имён нет).
+# Раскомментируй строки и замени <...> настоящими именами
+# (`systemctl --user list-units --type=service`, `docker ps --format '{{.Names}}'`). Всё после # — комментарий.
+
+# Юниты сверх встроенного белого списка RESTARTABLE, через пробел (интеграции с корпоративным мессенджером).
+# hermes-gateway и repowise-mcp сюда не добавляются — их перезапуск только по ✅.
+# extra_units = news-<мессенджер> poh-widget-<мессенджер>-room
+
+# Контейнер Chrome корпоративного мессенджера для `chrome-restart corpchat`.
+# corpchat_container = <контейнер>
