@@ -5,7 +5,7 @@
 # (`guardian-shell changes`), чтобы при сбое видеть, кто что трогал перед ним.
 set -uo pipefail
 unit="${1:?usage: poh-restart <unit> [--by text] [--health url]}"; shift
-by="${POH_BY:-${USER}}"; health=""
+by="${POH_BY:-${USER:-$(id -un)}}"; health=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --by) by="$2"; shift 2 ;;
@@ -29,7 +29,7 @@ if [ -n "$health" ]; then
     case "$code" in 2*|3*) break ;; esac; sleep 1
   done
 fi
-from="${SSH_CONNECTION%% *}"
+from="${SSH_CONNECTION:-}" ; from="${from%% *}"
 python3 - "$state/changes.jsonl" "$unit" "$by" "$before" "$after" "$rc" "$code" "$from" <<'PY'
 import json, sys, time
 path, unit, by, before, after, rc, code, frm = sys.argv[1:]
