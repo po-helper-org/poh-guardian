@@ -24,10 +24,11 @@ RESTARTS = os.path.join(STATE, "restarts.json")
 
 # Юниты aleks, которые агент вправе перезапускать сам. Не входят:
 # hermes-gateway (боты молчат ~4 мин и применяется всё накопленное в конфигах — только по ✅),
-# repowise-mcp (рвёт сессии), всё системное (нужен sudo).
+# repowise-mcp (рвёт сессии), всё системное (нужен sudo), выведенные из работы 23.11.2026
+# (server-infra deploy/retire/2026-11-unused.sh: pi-web, pi-web-sessiond, pi-totp-gate, Meet, Roundcube).
 RESTARTABLE = {
-    "matrix-synapse", "hermes-dashboard", "poh-harness", "pi-web", "pi-web-sessiond",
-    "pi-totp-gate", "dsh-token-relay", "poh-feed", "news-start", "news-mtslink",
+    "matrix-synapse", "hermes-dashboard", "poh-harness",
+    "dsh-token-relay", "poh-feed", "news-start", "news-mtslink",
     "corp-link", "corp-link-bot", "corp-jira", "corp-mail", "corp-chrome-watchdog",
     "po-sprint-observe", "poh-sprint-agent", "poh-sprint-daily",
     "poh-widget-manager", "poh-widget-calendar", "poh-widget-inbox", "poh-widget-harness",
@@ -121,7 +122,7 @@ def v_overview(_):
         ("упавшие юниты aleks", "systemctl --user --failed --no-legend --no-pager"),
         ("упавшие системные", "systemctl --failed --no-legend --no-pager"),
         ("ключевые юниты", "systemctl --user is-active matrix-synapse hermes-gateway hermes-dashboard "
-                           "pi-totp-gate poh-widget-inbox corp-link comunager-bridge | paste -sd' '"),
+                           "poh-widget-inbox corp-link comunager-bridge | paste -sd' '"),
         ("nginx", "systemctl is-active nginx"),
         ("VPN cscotun0", "ip -br a show cscotun0 2>&1"),
         ("топ памяти", "ps -eo pid,user,etime,rss,pcpu,comm --sort=-rss | head -12"),

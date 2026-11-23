@@ -38,9 +38,11 @@
 ## Карта: проверка → юнит (порт)
 - `harness…/` (302) → hermes-dashboard (3955, слушает 135.106.218.5)
 - `/matrix/…` → matrix-synapse (8008)
-- `/pi/` и все «302 на гейт» → pi-totp-gate (8611), pi-web (8504)
+- `outpost.goauthentik.io/ping` (204) и все «302 на вход» → Authentik (вход перед всеми сайтами)
 - `browser…/inbox/` → poh-widget-inbox (8628); `/widget/` → corp-link (8612); `/harness/` → poh-widget-harness (8633)
-- `/meet/healthz` → poh-meet-web под пользователем poh-meet — aleks его не перезапустит → только предложение
+- Выведены из работы 23.11.2026 (server-infra `deploy/retire/2026-11-unused.sh`): Meet `/meet`, Roundcube `/webmail`,
+  веб-почта `/mail`, pi-web `/pi/`, pi-totp-gate, `/claude/`. 302 на вход там — норма, не сбой: не чини, не предлагай
+  рестарт или откат.
 - Падает всё сразу, а nginx не active или `nginx-errors` про конфиг → nginx (системный, sudo) → предложение владельцу
 
 ## Известные причины (из журнала инцидентов)

@@ -6,7 +6,6 @@
     {"name": "Инбокс", "url": "https://browser.harness.aleksishmanov.ru/inbox/", "expect": [200]},
     {"name": "Корп-браузер (виджет)", "url": "https://browser.harness.aleksishmanov.ru/widget/", "expect": [200]},
     {"name": "PO-Harness", "url": "https://browser.harness.aleksishmanov.ru/harness/", "expect": [200]},
-    {"name": "Созвоны healthz", "url": "https://browser.harness.aleksishmanov.ru/meet/healthz", "expect": [200]},
-    {"name": "Гейт входа", "url": "https://harness.aleksishmanov.ru/pi/", "expect": [302]}
+    {"name": "Гейт входа (Authentik)", "url": "https://harness.aleksishmanov.ru/outpost.goauthentik.io/ping", "expect": [204]}
   ]
 }
