@@ -76,6 +76,21 @@ class HealGlmTest(unittest.TestCase):
         r, seen, _ = self.run_heal({"HOME": tmp})
         self.assertEqual(seen["env"]["ANTHROPIC_AUTH_TOKEN"], "from-file")
 
+    # Старый сторож будит по выведенной проверке, снаружи всё зелёное → агента не будим (инцидент 2026-11-24, Meet).
+    def test_removed_check_does_not_wake_agent(self):
+        r, seen, _ = self.run_heal({"ZAI_API_KEY": "k", "GUARDIAN_SCENARIO": "", "GUARDIAN_OWNER_IP": "203.0.113.7",
+                                    "GUARDIAN_REASON": "Созвоны healthz — код 302 (ждали 200) (сторож Mac)"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIsNone(seen, "агент не запускался")
+        self.assertIn("устаревшего сторожа", r.stdout)
+
+    def test_known_check_still_goes_to_ban_check(self):
+        r, seen, _ = self.run_heal({"ZAI_API_KEY": "k", "GUARDIAN_SCENARIO": "", "GUARDIAN_OWNER_IP": "203.0.113.7",
+                                    "GUARDIAN_REASON": "Инбокс — код 502 (ждали 200) (сторож Mac)"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIsNotNone(seen, "настоящая побудка — агент проверяет бан")
+        self.assertIn("БАН:", " ".join(seen["argv"]))
+
 
 if __name__ == "__main__":
     unittest.main()
