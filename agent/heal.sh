@@ -37,6 +37,17 @@ started=$(date +%s)
 
 probe_json=$(probe --json --gap 15); probe_rc=$?
 owner_ip="${GUARDIAN_OWNER_IP:-}"
+# Старая копия сторожа (не обновлён на каком-то Mac) будит по проверкам, которых уже нет в checks.json,
+# — например, по выведенному 23.11 Meet (инцидент 2026-11-24/25: побудка раз в 30 мин, «бан IP», 4–5 мин GLM).
+# Снаружи всё зелёное → агента не будим, владельцу — одна строка. Учения/задачи/force — как раньше.
+if [ $probe_rc -eq 0 ] && [ "${GUARDIAN_FORCE:-0}" != 1 ] && [ -z "$scenario" ]; then
+  stale=$(python3 probe/probe.py --stale "$reason" 2>/dev/null)
+  if [ -n "$stale" ]; then
+    echo "побудка от устаревшего сторожа — агента не бужу: $reason"
+    tg send "ℹ️ Хранитель: побудка от устаревшего сторожа — таких проверок больше нет: ${stale//$'\n'/, }. Снаружи всё отвечает, агента не будил. Обновите сторож на том Mac: git pull в poh-guardian, затем bash mac/install-launchd.sh. IP побудки: ${owner_ip:-—}" >/dev/null
+    exit 0
+  fi
+fi
 # Из облака всё отвечает, а у владельца нет → почти наверняка бан его IP fail2ban'ом (инцидент 2026-10-19 20:36).
 if [ $probe_rc -eq 0 ] && [ -n "$owner_ip" ] && [ -z "$scenario" ]; then scenario=ban; fi
 if [ $probe_rc -eq 0 ] && [ "${GUARDIAN_FORCE:-0}" != 1 ] && [ -z "$scenario" ]; then

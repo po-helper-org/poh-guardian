@@ -8,10 +8,12 @@
   probe.py                       # человекочитаемо, код 1 — есть сбои
   probe.py --json                # JSON для workflow
   probe.py --loop-state F --trigger-cmd "…"   # режим сторожа на Mac (см. mac/)
+  probe.py --stale "причина побудки"           # проверки из причины, которых уже нет в checks.json
 """
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -80,6 +82,22 @@ def describe(r):
     return "%s — %s (ждали %s)" % (r["name"], got, "/".join(map(str, r["expect"])))
 
 
+def stale_checks(reason, checks):
+    """Имена упавших проверок из причины побудки сторожа, если ни одной из них уже нет в checks.json.
+
+    Причина сторожа — `describe()` через «; » (+ хвост «(сторож Mac…)»). Старая копия сторожа на чужом Mac
+    продолжает проверять выведенные системы (инцидент 2026-11-24: Meet, 302) — такая побудка не сбой.
+    Пустой список — побудка обычная (или не от сторожа): разбирать как раньше.
+    """
+    reason = re.sub(r"\s*\(сторож Mac[^)]*\)\s*$", "", reason or "").strip()
+    parts = [x.strip() for x in reason.split("; ") if x.strip()]
+    if not parts or not all(" — " in x and "(ждали " in x for x in parts):
+        return []
+    names = [x.rsplit(" — ", 1)[0] for x in parts]
+    known = {c["name"] for c in checks}
+    return [] if any(n in known for n in names) else names
+
+
 # --- режим сторожа (Mac): решение «будить ли агента» отдельно, чтобы тестировать ---
 
 def decide(state, ok, now, need=2, cooldown=1800):
@@ -121,7 +139,13 @@ def main(argv=None):
     ap.add_argument("--need", type=int, default=2)
     ap.add_argument("--cooldown", type=int, default=1800)
     ap.add_argument("--reference", help="адрес для проверки своей сети (напр. https://api.github.com/zen)")
+    ap.add_argument("--stale", metavar="REASON", help="напечатать проверки из причины побудки, которых нет в checks.json")
     a = ap.parse_args(argv)
+
+    if a.stale is not None:
+        with open(a.checks) as f:
+            print("\n".join(stale_checks(a.stale, json.load(f)["checks"])))
+        return 0
 
     if a.reference and not network_ok(a.reference):
         print("нет интернета у наблюдателя — пропуск (%s)" % a.reference)

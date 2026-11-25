@@ -73,5 +73,31 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(st["fails"], 1)
 
 
+
+class StaleChecksTest(unittest.TestCase):
+    """Побудка старого сторожа по проверке, которой уже нет в checks.json (инцидент 2026-11-24, Meet)."""
+
+    def test_removed_check_is_stale(self):
+        self.assertEqual(probe.stale_checks("Созвоны healthz — код 302 (ждали 200) (сторож Mac)", CHECKS),
+                         ["Созвоны healthz"])
+
+    def test_any_known_check_means_real_wake(self):
+        self.assertEqual(probe.stale_checks("Созвоны — код 302 (ждали 200); A — код 502 (ждали 200) (сторож Mac)",
+                                            CHECKS), [])
+
+    def test_known_check_alone(self):
+        self.assertEqual(probe.stale_checks("B — timed out (ждали 302) (сторож Mac, локально)", CHECKS), [])
+
+    def test_not_a_watchdog_reason(self):
+        for reason in ("", "запуск вручную", "пинг по расписанию", "что-то — сломалось"):
+            self.assertEqual(probe.stale_checks(reason, CHECKS), [], reason)
+
+    def test_real_catalog_has_no_meet(self):
+        import json
+        with open(os.path.join(os.path.dirname(__file__), "..", "probe", "checks.json")) as f:
+            checks = json.load(f)["checks"]
+        self.assertEqual(probe.stale_checks("Созвоны healthz — код 302 (ждали 200) (сторож Mac)", checks),
+                         ["Созвоны healthz"])
+
 if __name__ == "__main__":
     unittest.main()
